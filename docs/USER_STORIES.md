@@ -13,8 +13,10 @@ tiap hari.
 | Siswa | **Ardy** (Year 9, 14 mapel) | Tahu apa yang jatuh tempo, apa yang harus disubmit, tandai yang selesai — tanpa kewalahan |
 | Orang tua | **Arif** | Ringkasan harian tanpa buka ManageBac; tanda bahaya dini |
 | Orang tua | **Windy** | Visibilitas penuh; bisa bantu Ardy tepat waktu |
+| Guru les | **Guru Matematika, Guru Perancis** (nanti: Sains, INS/I&S, dst) | Visibilitas **hanya ke mapel yang diajar**: tugas & PR, unit yang sedang dipelajari, apa yang perlu difokuskan & diuji |
 
 Prinsip: **satu sumber kebenaran bersama** — yang Ardy lihat = yang orang tua lihat, beda sudut pandang saja.
+Untuk guru les berlaku prinsip tambahan: **akses per-mapel (subject-scoped)** — tiap guru les hanya melihat mata pelajaran yang dia ajar, bukan seluruh data Ardy.
 
 ## Fondasi teknis (sudah diverifikasi dari akun Ardy)
 
@@ -69,6 +71,34 @@ Status: ✓ = selesai · 🔨 = sedang dibangun · 📅 = rencana
 - **F3** 📅 Rencana belajar + cek pemahaman per unit.
 - **F4** 📅 Orang tua melihat "sisa waktu vs kapan mulai" untuk rencana sesi belajar.
 
+### Epic G — Guru les (per mapel) (Fase 3–4)
+
+Ardy punya guru les per mata pelajaran (mulai dari Matematika & Perancis; nanti bisa Sains, INS,
+dst). Tiap guru les butuh visibilitas **hanya ke mapelnya**, agar les selaras dengan sekolah dan
+bisa fokus ke yang perlu diuji.
+
+**Akses & kontrol**
+- **G1** 📅 Orang tua mengundang guru les dan menetapkan **mapel apa** yang boleh dia lihat (akses per-mapel).
+- **G2** 📅 Guru les hanya melihat data mapel yang dia ajar — bukan seluruh tugas/notifikasi/nilai Ardy (privasi).
+- **G3** 📅 Orang tua bisa mencabut akses guru les kapan saja.
+
+**Visibilitas untuk guru les**
+- **G4** 📅 Guru les melihat **tugas & PR sekolah** yang mendatang di mapelnya (agar les bisa disiapkan).
+- **G5** 📅 Guru les melihat **unit/topik yang sedang dipelajari** di kelas sekolah Ardy (dari data `hint`: unit + deskripsi).
+- **G6** 📅 Guru les melihat **status submit** Ardy di mapelnya (sudah/belum), untuk ditindaklanjuti saat les.
+- **G7** 📅 Guru les bisa membuka **materi/lampiran** tugas sekolah sebagai bahan les.
+- **G8** 📅 Guru les diberi tahu saat ada **tugas baru / reminder** di mapelnya.
+
+**Fokus & pengujian**
+- **G9** 📅 Guru les menandai **topik/skill yang perlu difokuskan** (area lemah Ardy) — jadi daftar fokus per mapel.
+- **G10** 📅 Guru les membuat **latihan/kuis** untuk menguji Ardy pada topik fokus tersebut.
+- **G11** 📅 Guru les melihat **hasil latihan/kuis** Ardy dari waktu ke waktu (pelacakan penguasaan / mastery).
+- **G12** 📅 Ardy melihat, sebelum les, **apa yang guru les minta difokuskan / disiapkan**.
+
+**Koordinasi dengan orang tua**
+- **G13** 📅 Orang tua melihat **catatan fokus & hasil uji** dari guru les, untuk memastikan les efektif dan Ardy berkembang.
+- **G14** 📅 Guru les & orang tua berbagi **satu tampilan mapel** (tugas sekolah + fokus les + hasil) tanpa saling membuka data lain.
+
 ## Roadmap bertahap
 
 | Fase | Fokus | Status | Isi |
@@ -76,10 +106,14 @@ Status: ✓ = selesai · 🔨 = sedang dibangun · 📅 = rencana
 | **0** | Fondasi API | ✓ selesai | Login aman + memetakan API (deadline, detail, notifikasi) |
 | **1** | Tracker pribadi | 🔨 sedang | `track.mjs` + `submit.mjs` + `notifications.mjs`; store lokal bertahan lintas-sync |
 | **2** | Otomatis + orang tua | 📅 berikutnya | Sinkron harian → digest ke HP Arif & Windy; status on-track; peringatan H-1 |
-| **3** | Dashboard bersama | 📅 nanti | Web sederhana untuk keluarga; rincian per mapel |
-| **4** | Pendamping belajar | 📅 eksploratif | Pecah proyek; ringkasan & latihan dari materi guru per unit |
+| **3** | Dashboard bersama + guru les | 📅 nanti | Web untuk keluarga; rincian per mapel; **akses per-mapel untuk guru les** (Epic G) |
+| **4** | Pendamping belajar + pengujian | 📅 eksploratif | Pecah proyek; latihan dari materi; **kuis & pelacakan penguasaan dari guru les** |
 
 Tiap fase menghasilkan sesuatu yang langsung berguna.
+
+**Catatan arsitektur (baru, karena guru les):** mulai Fase 3 sistem perlu **kontrol akses berbasis peran
+(role-based access)** — tiap pengguna (Ardy / orang tua / guru les) hanya melihat data sesuai perannya,
+dan guru les dibatasi per mapel. Ini keputusan desain penting sebelum ada login untuk pihak selain keluarga.
 
 ## Sudah jalan hari ini (Fase 0 & 1)
 
@@ -105,3 +139,4 @@ Alat: `track.mjs` (deadline+pengaya) · `submit.mjs` (status submit) · `notific
 3. **Seberapa jujur "sudah submit"?** Percaya Ardy vs cocokkan otomatis ke ManageBac (B5).
 4. **Nilai/rapor: minta token sekolah?** E4 butuh API admin ManageBac (`auth-token` dari admin).
 5. **Keamanan kredensial Ardy** — siapa menyimpan & bagaimana diamankan (idealnya di layanan, bukan perangkat).
+6. **Akses guru les (Epic G)** — perlu login terpisah per guru les dengan batasan per-mapel. Bagaimana guru les diundang, dan seberapa detail data yang boleh dilihat (hanya tugas & unit, atau termasuk nilai)? Ini memicu kebutuhan role-based access di Fase 3.
