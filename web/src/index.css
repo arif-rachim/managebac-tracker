@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 33% 98%;
+    --foreground: 222 20% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 14%;
+    --primary: 222 63% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 94%;
+    --secondary-foreground: 222 20% 20%;
+    --muted: 220 20% 95%;
+    --muted-foreground: 220 10% 46%;
+    --accent: 222 63% 95%;
+    --accent-foreground: 222 63% 40%;
+    --border: 220 20% 90%;
+    --input: 220 20% 90%;
+    --ring: 222 63% 50%;
+    --radius: 0.85rem;
+
+    --todo: 220 10% 55%;
+    --doing: 250 62% 58%;
+    --submitted: 148 63% 40%;
+    --overdue: 356 68% 55%;
+    --warn: 38 78% 45%;
+  }
+
+  .dark {
+    --background: 222 24% 8%;
+    --foreground: 220 22% 92%;
+    --card: 222 22% 11%;
+    --card-foreground: 220 22% 92%;
+    --primary: 222 90% 72%;
+    --primary-foreground: 222 40% 12%;
+    --secondary: 222 18% 18%;
+    --secondary-foreground: 220 22% 90%;
+    --muted: 222 18% 16%;
+    --muted-foreground: 220 12% 62%;
+    --accent: 222 40% 20%;
+    --accent-foreground: 222 90% 82%;
+    --border: 222 16% 22%;
+    --input: 222 16% 22%;
+    --ring: 222 90% 72%;
+
+    --todo: 220 10% 60%;
+    --doing: 250 70% 72%;
+    --submitted: 148 55% 55%;
+    --overdue: 356 78% 68%;
+    --warn: 38 75% 60%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'tnum' 0;
+  }
+  /* tabular numbers where digits align */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
