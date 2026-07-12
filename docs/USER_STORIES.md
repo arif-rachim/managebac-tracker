@@ -18,6 +18,8 @@ tiap hari.
 Prinsip: **satu sumber kebenaran bersama** — yang Ardy lihat = yang orang tua lihat, beda sudut pandang saja.
 Untuk guru les berlaku prinsip tambahan: **akses per-mapel (subject-scoped)** — tiap guru les hanya melihat mata pelajaran yang dia ajar, bukan seluruh data Ardy.
 
+**Arif juga berperan sebagai admin sistem** — selain sudut pandang orang tua, dia butuh melihat kesehatan sinkronisasi data dari ManageBac (Epic H).
+
 ## Fondasi teknis (sudah diverifikasi dari akun Ardy)
 
 Semua ini sudah dibuktikan lewat login + 3 rekaman HAR:
@@ -99,13 +101,32 @@ bisa fokus ke yang perlu diuji.
 - **G13** 📅 Orang tua melihat **catatan fokus & hasil uji** dari guru les, untuk memastikan les efektif dan Ardy berkembang.
 - **G14** 📅 Guru les & orang tua berbagi **satu tampilan mapel** (tugas sekolah + fokus les + hasil) tanpa saling membuka data lain.
 
+### Epic H — Kesehatan sinkronisasi (Admin) (Fase 2)
+
+Arif sebagai admin perlu percaya bahwa data yang dilihat semua orang benar-benar **terbaru**.
+Data diambil dari ManageBac lewat sync berkala; kalau sync gagal (sesi login kedaluwarsa,
+kredensial salah, JWT hub kedaluwarsa, ManageBac down), semua orang bisa melihat data basi
+tanpa sadar. Karena itu proses sync harus terlihat.
+
+- **H1** 📅 Admin melihat **kapan sync terakhir berhasil** (per sumber: deadline, notifikasi).
+- **H2** 📅 Admin melihat **status sync terakhir**: berhasil / gagal, jumlah item yang diambil.
+- **H3** 📅 Admin melihat **alasan kegagalan** saat sync gagal (mis. "login ditolak", "JWT hub kedaluwarsa", "ManageBac tidak dapat dihubungi").
+- **H4** 📅 Admin **diberi tahu** (push/email) saat sync gagal atau data jadi **basi** (mis. belum ter-sync > 24 jam).
+- **H5** 📅 Admin melihat **riwayat/log** beberapa sync terakhir (waktu, durasi, hasil).
+- **H6** 📅 Admin bisa **memicu sync manual** kapan saja (mis. setelah memperbaiki kredensial).
+- **H7** 📅 Admin melihat **status kredensial/sesi**: kapan sesi login perlu diperbarui, kapan token hub kedaluwarsa.
+- **H8** 📅 Setiap tampilan (Ardy/orang tua/guru les) menampilkan penanda **"data per <waktu sync terakhir>"** agar tidak ada yang salah kira data real-time.
+
+> Catatan implementasi: `data/store.json` sudah menyimpan `syncedAt`. Fase 2 tinggal
+> menambah catatan per-run (status, sumber, jumlah item, error) untuk mendukung H1–H8.
+
 ## Roadmap bertahap
 
 | Fase | Fokus | Status | Isi |
 |------|-------|--------|-----|
 | **0** | Fondasi API | ✓ selesai | Login aman + memetakan API (deadline, detail, notifikasi) |
 | **1** | Tracker pribadi | 🔨 sedang | `track.mjs` + `submit.mjs` + `notifications.mjs`; store lokal bertahan lintas-sync |
-| **2** | Otomatis + orang tua | 📅 berikutnya | Sinkron harian → digest ke HP Arif & Windy; status on-track; peringatan H-1 |
+| **2** | Otomatis + orang tua + admin | 📅 berikutnya | Sinkron harian → digest ke HP Arif & Windy; status on-track; peringatan H-1; **kesehatan sync/admin (Epic H)** |
 | **3** | Dashboard bersama + guru les | 📅 nanti | Web untuk keluarga; rincian per mapel; **akses per-mapel untuk guru les** (Epic G) |
 | **4** | Pendamping belajar + pengujian | 📅 eksploratif | Pecah proyek; latihan dari materi; **kuis & pelacakan penguasaan dari guru les** |
 
