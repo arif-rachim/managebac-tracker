@@ -1,4 +1,10 @@
-// ManageBac login + API reconnaissance (personal account)
+// ManageBac login + API reconnaissance via a REAL Chromium browser.
+//
+// NOTE: this only works where Chromium has open network access. In the Claude
+// Code web sandbox it fails with ERR_CONNECTION_RESET, because Chromium does
+// DNS-over-HTTPS directly to 8.8.8.8 and bypasses the egress proxy. For the
+// proxied/web environment use scripts/api-recon.mjs instead (Playwright's
+// Node-based `request` API, which honours HTTPS_PROXY).
 //
 // Goal: log into the school's ManageBac slowly (throttled, ~1s between steps)
 // so we don't look like a bot, then record every network request the SPA makes
@@ -36,16 +42,24 @@ const requests = [];
 (async () => {
   mkdirSync('data', { recursive: true });
 
+  // In the managed/web environment, outbound traffic must go through the
+  // agent proxy (HTTPS_PROXY). Chromium won't pick it up from env on its own,
+  // so pass it explicitly; the proxy does TLS interception with its own CA,
+  // hence ignoreHTTPSErrors on the context.
+  const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy;
+
   const browser = await chromium.launch({
     headless: true,
     executablePath: '/opt/pw-browsers/chromium',
     slowMo: 250, // slow down every action a little
+    ...(proxyServer ? { proxy: { server: proxyServer } } : {}),
   });
   const context = await browser.newContext({
     userAgent:
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 800 },
     locale: 'en-US',
+    ignoreHTTPSErrors: Boolean(proxyServer),
   });
 
   // record every request the page makes
