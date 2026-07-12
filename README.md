@@ -23,6 +23,7 @@ honours the proxy) rather than a real browser:
 | script | what it does | runs in the web sandbox? |
 |--------|--------------|--------------------------|
 | `scripts/track.mjs` | **the tracker** — sync deadlines into a store, report what's due | ✅ yes |
+| `scripts/notifications.mjs` | read messages/notifications from the Faria hub | ✅ yes |
 | `scripts/api-recon.mjs` | map every endpoint the portal exposes (recon) | ✅ yes |
 | `scripts/lib/managebac.mjs` | shared login + calendar-feed client | — |
 | `scripts/login.mjs` | real Chromium browser (screenshots, live network log) | ❌ no (DoH bypass) |
@@ -135,16 +136,49 @@ exactly what a tracker needs, no HTML scraping:
 `MB_TZ`) and writes `data/events.json` (raw) plus `data/deadlines.json` (slim:
 `{id, due, title, type, category, classId, url}`). **Build the tracker on this.**
 
-A second JSON endpoint appears in the HAR — the Faria notifications hub, a
-cross-origin service that returns unread counts:
+## ⭐ Second real JSON API — the Faria notifications hub
 
-```
-GET https://mnn-hub-ca.prod.faria.co/api/frontend/v2/notifications/stats
+A HAR of the **notifications** page revealed a full REST API on a separate Faria
+service, `https://mnn-hub-ca.prod.faria.co/api/frontend/v2`:
+
+| method | endpoint | what |
+|--------|----------|------|
+| `GET` | `/notifications/stats` | `{"stats":{"unread_messages":N}}` |
+| `GET` | `/notifications?page=1&per_page=100&kind=unread\|read\|starred` | paginated list |
+| `PUT` | `/notifications/{id}/read` | mark one read |
+
+**Auth is a bearer JWT, not a cookie.** The managebac page embeds a short-lived
+ES512 JWT on the notifications-trigger element:
+
+```html
+<a class="…js-messages-and-notifications-trigger…"
+   data-token="eyJhbGciOiJFUzUxMiJ9.…"          <!-- the bearer JWT -->
+   data-mnn-hub-endpoint="https://mnn-hub-ca.prod.faria.co"
+   data-namespace="student" …>
 ```
 
-It's CORS (`Origin: …managebac.com`) and authenticated by a `.faria.co` SSO
-cookie, so it's only callable after the full SSO login. Useful for a "you have N
-new notifications" badge; not needed for deadline tracking.
+(JWT payload: `{user_id, user_portal_account_id, email, iss:"managebac"}`.) You
+call the hub with `Authorization: Bearer <data-token>` and
+`Origin: https://<subdomain>.managebac.com`. Confirmed working live.
+
+Each list item: `{id, title, created_at, body (HTML), body_preview, event_name,
+sender:{name,initials}, starred, is_read, origin, metadata}`. Notification types
+include *New Task*, *Task Reminder*, *Updated Task*, *New File Uploaded*, and
+*Class Digest* (which itself lists upcoming deadlines) — a second, event-driven
+signal for the tracker on top of the calendar feed.
+
+Run it:
+
+```bash
+node scripts/notifications.mjs --kind unread          # or read | starred
+node scripts/notifications.mjs --kind read --all      # follow all pages
+node scripts/notifications.mjs --mark-read 123456789  # the only write action
+```
+
+Writes `data/notifications.json`. The page also opens a WebSocket
+(`wss://<subdomain>.managebac.com/websocket`, ActionCable) for live pushes, and
+serves attachments via signed `/attachments/<blob>` URLs — not needed for
+tracking, but that's what the rest of the HAR is.
 
 Everything else in the HAR (68 requests to `assets.managebac.com`, plus
 `bam.nr-data.net`, `clarity.ms`, `google-analytics.com`, `zendesk.com`) is

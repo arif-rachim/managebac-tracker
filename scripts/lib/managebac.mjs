@@ -109,3 +109,90 @@ export async function fetchDeadlines(ctx, { start, end, tz, daysAhead = 60, now 
     description: stripHtml(e.description).slice(0, 500),
   }));
 }
+
+// --- Faria notifications hub (mnn-hub) --------------------------------------
+// The student notifications/messages live on a separate Faria service. The
+// managebac page embeds a short-lived ES512 JWT (data-token) + the hub URL
+// (data-mnn-hub-endpoint) on the notifications-trigger element. The hub is a
+// real JSON REST API authenticated with `Authorization: Bearer <jwt>` and a
+// CORS Origin of the school's managebac host.
+
+// Read the embedded hub endpoint + bearer token from any student page that
+// renders the notifications trigger (/student/notifications is reliable).
+export async function getHub(ctx, base) {
+  await pace();
+  const html = await (await ctx.get('/student/notifications')).text();
+  const token = (html.match(/data-token="([^"]+)"/) || [])[1];
+  const endpoint = (html.match(/data-mnn-hub-endpoint="([^"]+)"/) || [])[1];
+  if (!token || !endpoint) throw new Error('Could not find hub token/endpoint on the notifications page.');
+  const origin = base || `https://${process.env.MB_SUBDOMAIN || 'diadubai'}.managebac.com`;
+  return {
+    endpoint,
+    token,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Origin: origin,
+      Accept: 'application/json',
+    },
+  };
+}
+
+const stripHtmlG = (s) =>
+  String(s || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// Unread-message count: { unread_messages }
+export async function notificationStats(ctx, hub) {
+  await pace();
+  const r = await ctx.get(`${hub.endpoint}/api/frontend/v2/notifications/stats`, { headers: hub.headers });
+  return (JSON.parse(await r.text())).stats;
+}
+
+// List notifications. kind = 'unread' | 'read' | 'starred'. Paginated.
+// Set perPage up to 100; pass all:true to auto-follow pages until has_more=false.
+export async function fetchNotifications(ctx, hub, { kind = 'unread', perPage = 100, all = false } = {}) {
+  const items = [];
+  let page = 1;
+  let meta = null;
+  for (;;) {
+    await pace();
+    const r = await ctx.get(
+      `${hub.endpoint}/api/frontend/v2/notifications?page=${page}&per_page=${perPage}&kind=${encodeURIComponent(kind)}`,
+      { headers: hub.headers }
+    );
+    if (r.status() !== 200) throw new Error(`notifications ${kind} p${page} -> ${r.status()}`);
+    const j = JSON.parse(await r.text());
+    meta = j.meta;
+    for (const n of j.items || []) {
+      items.push({
+        id: n.id,
+        title: (n.title || '').trim(),
+        created_at: n.created_at,
+        event_name: n.event_name,
+        sender: (n.sender && (n.sender.name || n.sender.initials)) || null,
+        starred: !!n.starred,
+        is_read: !!n.is_read,
+        preview: stripHtmlG(n.body_preview || n.description || n.body).slice(0, 300),
+        origin: n.origin,
+      });
+    }
+    if (!all || !j.meta?.has_more) break;
+    page++;
+  }
+  return { items, meta };
+}
+
+// Mark a single notification read (write op — only when explicitly asked).
+export async function markNotificationRead(ctx, hub, id) {
+  await pace();
+  const r = await ctx.fetch(`${hub.endpoint}/api/frontend/v2/notifications/${id}/read`, {
+    method: 'PUT',
+    headers: { ...hub.headers, 'Content-Type': 'application/json' },
+    data: '{}',
+  });
+  return r.status();
+}
