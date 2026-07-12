@@ -17,15 +17,18 @@ through an egress proxy** (`HTTPS_PROXY`). Two things follow from that:
   navigation dies with `ERR_CONNECTION_RESET`. Disabling DoH via flags did not
   stick. So the browser script only works where Chromium has open network.
 
-Because of that there are **two scripts**:
+Because of that the scripts use Playwright's **`request`** API (Node HTTP, which
+honours the proxy) rather than a real browser:
 
-| script | engine | runs in the web sandbox? | use when |
-|--------|--------|--------------------------|----------|
-| `scripts/api-recon.mjs` | Playwright **`request`** (Node HTTP, honours the proxy) | ✅ yes | recon / automation / any proxied env |
-| `scripts/login.mjs` | Playwright **Chromium** (real browser) | ❌ no (DoH bypass) | your own machine / open network |
+| script | what it does | runs in the web sandbox? |
+|--------|--------------|--------------------------|
+| `scripts/track.mjs` | **the tracker** — sync deadlines into a store, report what's due | ✅ yes |
+| `scripts/api-recon.mjs` | map every endpoint the portal exposes (recon) | ✅ yes |
+| `scripts/lib/managebac.mjs` | shared login + calendar-feed client | — |
+| `scripts/login.mjs` | real Chromium browser (screenshots, live network log) | ❌ no (DoH bypass) |
 
-`api-recon.mjs` replays the exact HTTP flow a browser performs (form login → SSO
-redirect → session cookie), so it learns the same API without needing a GUI.
+The `request`-based scripts replay the exact HTTP flow a browser performs (form
+login → SSO redirect → session cookie), so they reach the same data without a GUI.
 
 ## Setup
 
@@ -33,7 +36,31 @@ redirect → session cookie), so it learns the same API without needing a GUI.
 npm install
 ```
 
-## Run (recommended — works through the proxy)
+## Deadline tracker
+
+`scripts/track.mjs` is the actual tracker. It logs in, pulls the `events.json`
+feed for a rolling window, merges it into a local JSON store (`data/store.json`,
+deduped by task id, remembering `first_seen` / `last_seen` and flagging tasks
+that disappear from the feed), and prints upcoming deadlines with a countdown.
+
+```bash
+MB_SUBDOMAIN=diadubai \
+MB_LOGIN='you@school.email' \
+MB_PASSWORD='your-password' \
+NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt \
+node scripts/track.mjs --days 60
+```
+
+Flags: `--days N` (look-ahead window, default 60), `--start ISO --end ISO`
+(explicit window, e.g. a past term), `--all` (list everything stored, not just
+upcoming), `--json` (machine-readable output). Colour badges: 🔴 ≤1 day, 🟠 ≤3,
+🟡 ≤7, ⚪ later. Re-run it any time (e.g. from cron) — the store accumulates and
+deduplicates, so history is preserved even as the feed window moves.
+
+Shared login/fetch logic lives in `scripts/lib/managebac.mjs` (reused by both
+the tracker and the recon script).
+
+## Recon — map all endpoints (optional)
 
 Credentials are read from env vars so they never land in git:
 
