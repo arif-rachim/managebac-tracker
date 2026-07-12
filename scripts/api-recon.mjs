@@ -141,6 +141,38 @@ function extract(html, re) {
     }
   }
 
+  // 5. The one genuine JSON endpoint (found via a browser HAR capture):
+  //    the student calendar feed. Returns a JSON array of every task/deadline/
+  //    event in a date window — this is the real API for a deadline tracker.
+  //    Auth is just the session cookie; params: start, end (ISO), timeZone.
+  const start = process.env.MB_START || '2026-01-01T00:00:00';
+  const end = process.env.MB_END || '2026-06-30T00:00:00';
+  const tz = process.env.MB_TZ || 'Asia/Muscat';
+  await pace();
+  const evResp = await ctx.get(
+    `/student/events.json?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&timeZone=${encodeURIComponent(tz)}`,
+    { headers: { Accept: 'application/json', Referer: `${BASE}/student/calendar` } }
+  );
+  let events = [];
+  try {
+    events = JSON.parse(await evResp.text());
+  } catch {}
+  console.log(`\n[events.json] ${evResp.status()} -> ${events.length} events in ${start.slice(0, 10)}..${end.slice(0, 10)}`);
+  writeFileSync('data/events.json', JSON.stringify(events, null, 2));
+  // slim, tracker-friendly view
+  const deadlines = events.map((e) => ({
+    id: e.id,
+    due: e.start,
+    title: (e.title || '').trim(),
+    type: e.type,
+    category: e.category,
+    classId: (String(e.url).match(/classes\/(\d+)/) || [])[1] || null,
+    url: e.url,
+  }));
+  writeFileSync('data/deadlines.json', JSON.stringify(deadlines, null, 2));
+  map.push({ path: '/student/events.json', status: evResp.status(), contentType: 'application/json', events: events.length });
+  deadlines.slice(0, 8).forEach((d) => console.log(`   [${String(d.due).slice(0, 16)}] ${String(d.category).padEnd(12)} ${d.title.slice(0, 50)}`));
+
   writeFileSync('data/api-map.json', JSON.stringify(map, null, 2));
   writeFileSync(
     'data/api-endpoints.txt',
