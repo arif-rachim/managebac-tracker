@@ -110,6 +110,53 @@ export async function fetchDeadlines(ctx, { start, end, tz, daysAhead = 60, now 
   }));
 }
 
+// Fetch the full detail ("hint" popover) for one calendar task. events.json
+// gives each task a hint_url = /student/classes/{classId}/events/{eventId}/hint;
+// this returns an HTML fragment with the teacher, unit, class, attachments
+// (name + size + download href) and the full description.
+export async function fetchTaskDetail(ctx, classId, eventId) {
+  await pace();
+  const resp = await ctx.get(`/student/classes/${classId}/events/${eventId}/hint`);
+  if (resp.status() !== 200) throw new Error(`hint ${classId}/${eventId} -> ${resp.status()}`);
+  const html = await resp.text();
+  const host = new URL(resp.url()).host;
+
+  const strip = (s) =>
+    String(s || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // value inside the <dd> that follows a <dt> whose label text matches
+  const field = (label) => {
+    const re = new RegExp(`${label}:</span></dt><dd[^>]*>(.*?)</dd>`, 'is');
+    const m = html.match(re);
+    return m ? strip(m[1]) : null;
+  };
+
+  const attachments = [...html.matchAll(/<a[^>]*href="([^"]+)"[^>]*class="fr-file"[^>]*data-name="([^"]+)"[\s\S]*?fr-file-size">([^<]+)</gi)].map(
+    (m) => ({ name: m[2], size: m[3].trim(), href: m[1].startsWith('http') ? m[1] : `https://${host}${m[1]}` })
+  );
+
+  const title = strip((html.match(/f-tile__title[^>]*>\s*<a[^>]*>(.*?)<\/a>/is) || [])[1]);
+  // coloured pills, e.g. ["Formative","Homework"] (assessment kind + category)
+  const labels = [...html.matchAll(/class=['"]label['"][^>]*>([^<]+)</gi)].map((m) => strip(m[1])).filter(Boolean);
+
+  return {
+    classId,
+    eventId,
+    title,
+    labels,
+    teacher: field('Teacher'),
+    unit: field('Unit'),
+    className: field('Class'),
+    attachments,
+  };
+}
+
 // --- Faria notifications hub (mnn-hub) --------------------------------------
 // The student notifications/messages live on a separate Faria service. The
 // managebac page embeds a short-lived ES512 JWT (data-token) + the hub URL

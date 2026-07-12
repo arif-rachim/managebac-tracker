@@ -16,7 +16,7 @@
 //   --all          list every stored deadline, not just upcoming ones
 //   --json         print the upcoming list as JSON instead of a table
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { login, fetchDeadlines } from './lib/managebac.mjs';
+import { login, fetchDeadlines, fetchTaskDetail } from './lib/managebac.mjs';
 
 const STORE = 'data/store.json';
 
@@ -29,6 +29,7 @@ function parseArgs(argv) {
     else if (k === '--end') a.end = argv[++i];
     else if (k === '--all') a.all = true;
     else if (k === '--json') a.json = true;
+    else if (k === '--enrich') a.enrich = true;
   }
   return a;
 }
@@ -80,7 +81,12 @@ function fmtTable(list, now) {
     const when = String(t.due).slice(0, 16).replace('T', ' ');
     const badge = dl <= 1 ? '🔴' : dl <= 3 ? '🟠' : dl <= 7 ? '🟡' : '⚪';
     const left = dl < 0 ? `${-dl}d ago` : dl === 0 ? 'today' : `${dl}d`;
-    return `  ${badge} ${when}  ${String(left).padStart(7)}  ${String(t.category || '').padEnd(11)} ${t.title.slice(0, 48)}`;
+    let line = `  ${badge} ${when}  ${String(left).padStart(7)}  ${String(t.category || '').padEnd(11)} ${t.title.slice(0, 48)}`;
+    if (t.detail) {
+      const bits = [t.detail.teacher, (t.detail.labels || []).join('/'), t.detail.attachments?.length ? `📎${t.detail.attachments.length}` : null].filter(Boolean);
+      if (bits.length) line += `\n         ↳ ${bits.join('  ·  ')}`;
+    }
+    return line;
   });
   return rows.join('\n');
 }
@@ -101,18 +107,35 @@ function fmtTable(list, now) {
 
   console.log(`[track] fetching deadlines ${start.slice(0, 10)} .. ${end.slice(0, 10)}`);
   const fetched = await fetchDeadlines(ctx, { start, end });
-  await ctx.dispose();
   console.log(`[track] feed returned ${fetched.length} items`);
 
   const store = merge(loadStore(), fetched, nowIso, start, end);
-  writeFileSync(STORE, JSON.stringify(store, null, 2));
-  console.log(`[track] store now holds ${Object.keys(store.tasks).length} tasks -> ${STORE}`);
 
   // build the report list
   const all = Object.values(store.tasks).filter((t) => !t.removed);
   const upcoming = all
     .filter((t) => args.all || new Date(t.due).getTime() >= now.getTime() - 12 * 3600e3)
     .sort((a, b) => String(a.due).localeCompare(String(b.due)));
+
+  // optional enrichment: pull teacher / assessment type / attachments for the
+  // tasks we're about to show (throttled 1/s inside the lib), cache in the store
+  if (args.enrich) {
+    const targets = (args.all ? upcoming : upcoming.filter((t) => daysLeft(t.due, now) >= 0 && daysLeft(t.due, now) <= 14)).filter((t) => t.classId);
+    console.log(`[track] enriching ${targets.length} task(s) with detail…`);
+    for (const t of targets) {
+      try {
+        const d = await fetchTaskDetail(ctx, t.classId, t.id);
+        t.detail = { teacher: d.teacher, unit: d.unit, className: d.className, labels: d.labels, attachments: d.attachments };
+        store.tasks[t.id].detail = t.detail;
+      } catch (e) {
+        // leave undecorated on error
+      }
+    }
+  }
+
+  await ctx.dispose();
+  writeFileSync(STORE, JSON.stringify(store, null, 2));
+  console.log(`[track] store now holds ${Object.keys(store.tasks).length} tasks -> ${STORE}`);
 
   if (args.json) {
     console.log(JSON.stringify(upcoming, null, 2));

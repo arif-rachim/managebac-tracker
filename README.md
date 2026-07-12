@@ -54,7 +54,8 @@ node scripts/track.mjs --days 60
 
 Flags: `--days N` (look-ahead window, default 60), `--start ISO --end ISO`
 (explicit window, e.g. a past term), `--all` (list everything stored, not just
-upcoming), `--json` (machine-readable output). Colour badges: 🔴 ≤1 day, 🟠 ≤3,
+upcoming), `--enrich` (fetch teacher / assessment type / attachments for the
+tasks shown), `--json` (machine-readable output). Colour badges: 🔴 ≤1 day, 🟠 ≤3,
 🟡 ≤7, ⚪ later. Re-run it any time (e.g. from cron) — the store accumulates and
 deduplicates, so history is preserved even as the feed window moves.
 
@@ -135,6 +136,21 @@ exactly what a tracker needs, no HTML scraping:
 `api-recon.mjs` fetches this window (override with `MB_START` / `MB_END` /
 `MB_TZ`) and writes `data/events.json` (raw) plus `data/deadlines.json` (slim:
 `{id, due, title, type, category, classId, url}`). **Build the tracker on this.**
+
+### Per-task detail (the `hint` endpoint)
+
+Each event carries a `hint_url`. Fetching it returns an HTML fragment with the
+full task detail:
+
+```
+GET /student/classes/{classId}/events/{eventId}/hint
+```
+
+Parsed into: `{title, labels:["Formative","Homework"], teacher, unit, className,
+attachments:[{name, size, href}]}` — where each attachment `href` is a signed
+`/attachments/<blob>` download URL. `fetchTaskDetail()` in the lib does this, and
+`track.mjs --enrich` decorates the deadline report with teacher / assessment
+type / attachment count.
 
 ## ⭐ Second real JSON API — the Faria notifications hub
 
