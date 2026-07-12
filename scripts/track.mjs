@@ -51,7 +51,8 @@ function merge(store, fetched, nowIso, windowStart, windowEnd) {
     seen.add(String(d.id));
     const prev = store.tasks[d.id];
     store.tasks[d.id] = {
-      ...d,
+      ...prev, // preserve local overlay (status, submittedAt, detail, notes)
+      ...d, // refresh feed fields (title, due, category…)
       first_seen: prev?.first_seen || nowIso,
       last_seen: nowIso,
       removed: false,
