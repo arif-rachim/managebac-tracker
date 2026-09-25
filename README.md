@@ -1,79 +1,78 @@
 # managebac-tracker
 
-Personal tooling to log into a school ManageBac account (Faria Education Group)
-with Playwright and discover the API endpoints the web app uses, so we can later
-build an automated tracker.
+managebac-tracker is personal tooling for a student's account on ManageBac, the school learning platform from Faria Education Group, and is the first step towards an automated tracker for classes, tasks and deadlines. ManageBac's official partner API at `api.managebac.com` uses tokens that are issued to schools and administrators, so a student account has no documented API to build on. The single Node.js script in this repo uses Playwright to open a headless Chromium, log in slowly with credentials taken from environment variables, and record every network request the web app makes. It then writes a de-duplicated list of the XHR, fetch and `/api/` endpoints and checks a few likely JSON paths using the logged-in session. The results go into a local `data/` folder that git ignores. Status: early reconnaissance. The script is complete but has not yet been run against the live site, and no tracker exists yet.
 
-## ⚠️ Network note (Claude Code on the web)
+> Status: early development (one script, API discovery only).
 
-This was set up inside a Claude Code web environment whose **egress policy only
-allows GitHub + package registries**. From there, `*.managebac.com` returns
-`403 CONNECT (policy denial)` — the same as `google.com` — so the login could
-**not** be run live in that environment. GitHub was reachable (200), everything
-else was blocked.
+## Features
 
-To actually run the login you need one of:
+- Logs in through the normal `/login` page of `https://<subdomain>.managebac.com` with Playwright and headless Chromium.
+- Saves the login form's fields (tag, type, name, id, action, method) so selectors can be checked.
+- Records every request the page makes and extracts the distinct API-style endpoints.
+- After a successful login, probes `/student/self`, `/student/classes`, `/student/upcoming` and `/api/v1/students/self` (read-only GET requests with `Accept: application/json`).
+- Saves cookie names, domains and `httpOnly` flags only, never cookie values.
+- Deliberately slow, to avoid looking like a bot (see [Politeness](#politeness--anti-bot)).
 
-- **Run it locally** on your own machine (open network), or
-- Use a Claude Code environment whose network policy allows `managebac.com`
-  (see https://code.claude.com/docs/en/claude-code-on-the-web).
+## Tech stack
 
-The script itself is complete and ready — only the network was the blocker.
+Node.js (ES modules, Node 18+ as required by Playwright) · Playwright 1.56 · Chromium
 
-## Setup
+## Getting started
 
 ```bash
 npm install
+npx playwright install chromium
 ```
 
-Chromium: on a normal machine `npx playwright install chromium` once. (In the
-Claude web sandbox it's pre-installed at `/opt/pw-browsers/chromium`, which the
-script points to — change `executablePath` / remove it when running locally.)
+`scripts/login.mjs` launches Chromium from the fixed path `/opt/pw-browsers/chromium`, which is where the Claude Code web sandbox has it installed. When running on your own machine, change or remove `executablePath` in the script so Playwright uses the browser it downloaded.
 
-## Run
+Credentials come from environment variables so they never end up in git:
 
-Credentials are read from env vars so they never land in git:
+| Variable | Purpose |
+|----------|---------|
+| `MB_SUBDOMAIN` | Your school's ManageBac subdomain (the script has a default; set this for your school) |
+| `MB_LOGIN` | Login email (required) |
+| `MB_PASSWORD` | Password (required) |
 
 ```bash
-MB_SUBDOMAIN=diadubai \
+MB_SUBDOMAIN=yourschool \
 MB_LOGIN='you@school.email' \
 MB_PASSWORD='your-password' \
-node scripts/login.mjs
+npm run login
 ```
 
-Outputs land in `data/` (gitignored):
+`npm run login` runs `node scripts/login.mjs`.
 
-| file | what |
-|------|------|
-| `login-form.json` | the login form's field names/ids (so we know what to fill) |
-| `after-login.png` | screenshot after submit — visual proof of success/failure |
-| `network-log.json` | every request the page made |
-| `api-endpoints.txt` | de-duped list of the XHR/fetch/`/api/` endpoints the app calls — **this is the API map** |
-| `api-probe.json` | status codes from probing a few candidate JSON endpoints |
-| `cookies-summary.json` | session cookie names (session token lives here; values not saved) |
+## Output
 
-## How "learning the API" works here
+All files are written to `data/`, which is gitignored:
 
-ManageBac's student portal is a server-rendered Rails app with some XHR/JSON
-calls layered on. Rather than guess endpoints, the script **records what the app
-itself requests** after a real login, then de-dupes them into `api-endpoints.txt`.
-That's the reliable way to map an undocumented internal API. The probe step then
-tries a few likely JSON paths with the authenticated session cookies to see which
-return JSON.
+| File | Contents |
+|------|----------|
+| `login-form.json` | The login form's field names and ids, so we know what to fill |
+| `after-login.png` | Screenshot after submitting, as visual proof of success or failure |
+| `network-log.json` | Every request the page made (method, URL, resource type, host, path) |
+| `api-endpoints.txt` | De-duplicated `METHOD host/path` list of XHR, fetch and `/api/` calls. This is the API map. |
+| `api-probe.json` | Status codes and content types from probing candidate JSON endpoints (only written after a successful login) |
+| `cookies-summary.json` | Session cookie names, domains and `httpOnly` flags; values are not saved |
 
-Notes on how the login flow generally works (to be confirmed by a live run):
+## How "learning the API" works
 
-- Login page: `GET /login`. The form typically posts `login` + `password` plus a
-  CSRF `authenticity_token` (Rails/Devise). Session is cookie-based after that.
-- There is also an official **partner API** at `api.managebac.com` that uses an
-  `auth-token` header, but that's issued to schools/admins, not student logins —
-  so a student tracker relies on the cookie session above.
+ManageBac's student portal is a server-rendered Rails app with some XHR/JSON calls layered on top. Rather than guess endpoints, the script records what the app itself requests after a real login and reduces that to `api-endpoints.txt`, which is a reliable way to map an undocumented internal API. The probe step then tries a few likely JSON paths with the authenticated session to see which of them return JSON.
+
+Expected login flow, still to be confirmed by a live run:
+
+- Login page: `GET /login`. The form usually posts `login` and `password` plus a Rails/Devise CSRF `authenticity_token`, and the session is cookie-based after that.
+- The script fills `input[name="login"]` (or `#session_login`, or any email input) and `input[name="password"]` (or `#session_password`), then clicks the submit button.
+- Login is treated as successful when the page URL no longer contains `/login`.
 
 ## Politeness / anti-bot
 
-The script is deliberately slow to avoid looking like a bot:
+- `slowMo: 250` ms on every Playwright action.
+- Pauses of 1 to 2 seconds between opening the page, typing the login, typing the password and submitting.
+- A throttle (`THROTTLE_MS = 1000`) that keeps at least one second between the requests the script starts itself: opening the login page, submitting the form, and each API probe. Sub-resources that the page loads on its own are not throttled.
+- A fixed desktop Chrome user agent and a 1280x800 viewport.
 
-- `slowMo: 250ms` on every Playwright action,
-- human-like pauses (`sleep`) between typing login, password, and submit,
-- a global throttle so **no two outgoing requests fire less than 1s apart**
-  (`THROTTLE_MS`), including the API probes.
+## Network note (Claude Code on the web)
+
+The script was written inside a Claude Code web environment whose egress policy only allowed GitHub and package registries. From there, `*.managebac.com` returned `403 CONNECT (policy denial)`, so the login could not be run live. To run it you need either your own machine with an open network, or a Claude Code environment whose network policy allows `managebac.com` (see https://code.claude.com/docs/en/claude-code-on-the-web).
